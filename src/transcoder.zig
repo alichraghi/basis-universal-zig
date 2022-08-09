@@ -263,13 +263,13 @@ pub fn getImageInfo(self: Transcoder, data: []const u8, index: u32) error{Unknow
     }
 }
 
-const src_rgb = @import("testcard.basis.zig").src_rgb;
+const test_src_rgb = @import("basis_test_sources").src_rgb;
 
 test "read info" {
     const trnscdr = Transcoder.init();
     defer trnscdr.deinit();
 
-    try testing.expect(trnscdr.validateHeader(src_rgb));
-    _ = try trnscdr.getFileInfo(src_rgb);
-    _ = try trnscdr.getImageInfo(src_rgb, 0);
+    try testing.expect(trnscdr.validateHeader(test_src_rgb));
+    _ = try trnscdr.getFileInfo(test_src_rgb);
+    _ = try trnscdr.getImageInfo(test_src_rgb, 0);
 }

@@ -14,21 +14,18 @@ pub fn build(b: *std.build.Builder) void {
 
     const main_tests = b.addTest(comptime thisDir() ++ "/src/main.zig");
     main_tests.setBuildMode(mode);
+    main_tests.addPackagePath("basis_test_sources", thisDir() ++ "/test/basis_sources.zig");
     link(b, main_tests, .{
         .encoder = true,
         .transcoder = true,
     });
-    main_tests.use_stage1 = true;
+    main_tests.use_stage1 = false;
 
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&main_tests.step);
 }
 
 pub fn link(b: *std.build.Builder, step: *std.build.LibExeObjStep, options: Options) void {
-    if (!(options.encoder and options.transcoder)) {
-        unreachable;
-    }
-
     if (options.transcoder) {
         step.linkLibrary(buildBasisuTranscoder(b));
         step.addCSourceFile(comptime thisDir() ++ "/src/binding.cpp", &.{});
@@ -39,7 +36,7 @@ pub fn link(b: *std.build.Builder, step: *std.build.LibExeObjStep, options: Opti
 pub fn buildBasisuTranscoder(b: *std.build.Builder) *std.build.LibExeObjStep {
     const transcoder = b.addStaticLibrary("basisu_transcoder", null);
     transcoder.linkLibCpp();
-    transcoder.use_stage1 = true;
+    transcoder.use_stage1 = false;
     transcoder.addCSourceFiles(
         &.{
             vendor_dir ++ "/transcoder/basisu_transcoder.cpp",
