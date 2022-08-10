@@ -113,7 +113,7 @@ pub const ImageLevelDescriptor = struct {
 };
 
 pub const ImageInfo = struct {
-    index: u32,
+    image_index: u32,
     total_levels: u32,
     original_width: u32,
     original_height: u32,
@@ -123,6 +123,25 @@ pub const ImageInfo = struct {
     num_blocks_y: u32,
     total_blocks: u32,
     first_slice_index: u32,
+    alpha_flag: bool,
+    iframe_flag: bool,
+};
+
+pub const ImageLevelInfo = struct {
+    image_index: u32,
+    level_index: u32,
+    original_width: u32,
+    original_height: u32,
+    width: u32,
+    height: u32,
+    num_blocks_x: u32,
+    num_blocks_y: u32,
+    total_blocks: u32,
+    first_slice_index: u32,
+    rgb_file_offset: u32,
+    rgb_file_len: u32,
+    alpha_file_offset: u32,
+    alpha_file_len: u32,
     alpha_flag: bool,
     iframe_flag: bool,
 };
@@ -219,31 +238,6 @@ pub fn userData(self: Transcoder, data: []const u8) error{Unknown}![2]u32 {
         error.Unknown;
 }
 
-pub fn imageCount(self: Transcoder, data: []const u8) u32 {
-    return binding.transcoder_get_total_images(self.handle, data.ptr, @intCast(u32, data.len));
-}
-
-pub fn imageLevelCount(self: Transcoder, data: []const u8, image_index: u32) u32 {
-    return binding.transcoder_get_total_image_levels(self.handle, data.ptr, @intCast(u32, data.len), image_index);
-}
-
-pub fn imageLevelDescriptor(self: Transcoder, data: []const u8, image_index: u32, level_index: u32) error{Unknown}!ImageLevelDescriptor {
-    var desc: ImageLevelDescriptor = undefined;
-    return if (binding.transcoder_get_image_level_desc(
-        self.handle,
-        data.ptr,
-        @intCast(u32, data.len),
-        image_index,
-        level_index,
-        &desc.original_width,
-        &desc.original_height,
-        &desc.block_count,
-    ))
-        desc
-    else
-        error.Unknown;
-}
-
 pub fn fileInfo(self: Transcoder, data: []const u8) error{ InvalidTextureFormat, Unknown }!FileInfo {
     var fi: binding.FileInfo = undefined;
     if (binding.transcoder_get_file_info(self.handle, data.ptr, @intCast(u32, data.len), &fi)) {
@@ -274,11 +268,36 @@ pub fn fileInfo(self: Transcoder, data: []const u8) error{ InvalidTextureFormat,
     }
 }
 
-pub fn imageInfo(self: Transcoder, data: []const u8, index: u32) error{Unknown}!ImageInfo {
+pub fn imageCount(self: Transcoder, data: []const u8) u32 {
+    return binding.transcoder_get_total_images(self.handle, data.ptr, @intCast(u32, data.len));
+}
+
+pub fn imageLevelCount(self: Transcoder, data: []const u8, image_index: u32) u32 {
+    return binding.transcoder_get_total_image_levels(self.handle, data.ptr, @intCast(u32, data.len), image_index);
+}
+
+pub fn imageLevelDescriptor(self: Transcoder, data: []const u8, image_index: u32, level_index: u32) error{Unknown}!ImageLevelDescriptor {
+    var desc: ImageLevelDescriptor = undefined;
+    return if (binding.transcoder_get_image_level_desc(
+        self.handle,
+        data.ptr,
+        @intCast(u32, data.len),
+        image_index,
+        level_index,
+        &desc.original_width,
+        &desc.original_height,
+        &desc.block_count,
+    ))
+        desc
+    else
+        error.Unknown;
+}
+
+pub fn imageInfo(self: Transcoder, data: []const u8, image_index: u32) error{Unknown}!ImageInfo {
     var ii: binding.ImageInfo = undefined;
-    return if (binding.transcoder_get_image_info(self.handle, data.ptr, @intCast(u32, data.len), &ii, index))
+    return if (binding.transcoder_get_image_info(self.handle, data.ptr, @intCast(u32, data.len), &ii, image_index))
         ImageInfo{
-            .index = ii.m_image_index,
+            .image_index = ii.m_image_index,
             .total_levels = ii.m_total_levels,
             .original_width = ii.m_orig_width,
             .original_height = ii.m_orig_height,
@@ -295,17 +314,45 @@ pub fn imageInfo(self: Transcoder, data: []const u8, index: u32) error{Unknown}!
         error.Unknown;
 }
 
+pub fn imageLevelInfo(self: Transcoder, data: []const u8, image_index: u32, level_index: u32) error{Unknown}!ImageLevelInfo {
+    var ii: binding.ImageLevelInfo = undefined;
+    return if (binding.transcoder_get_image_level_info(self.handle, data.ptr, @intCast(u32, data.len), &ii, image_index, level_index))
+        ImageLevelInfo{
+            .image_index = ii.m_image_index,
+            .level_index = ii.m_level_index,
+            .original_width = ii.m_orig_width,
+            .original_height = ii.m_orig_height,
+            .width = ii.m_width,
+            .height = ii.m_height,
+            .num_blocks_x = ii.m_num_blocks_x,
+            .num_blocks_y = ii.m_num_blocks_y,
+            .total_blocks = ii.m_total_blocks,
+            .first_slice_index = ii.m_first_slice_index,
+            .rgb_file_offset = ii.m_rgb_file_ofs,
+            .rgb_file_len = ii.m_rgb_file_len,
+            .alpha_file_offset = ii.m_alpha_file_ofs,
+            .alpha_file_len = ii.m_alpha_file_len,
+            .alpha_flag = ii.m_alpha_flag,
+            .iframe_flag = ii.m_iframe_flag,
+        }
+    else
+        error.Unknown;
+}
+
 const test_src_rgb = @import("basis_test_sources").src_rgb;
 
 test "simple" {
     const trnscdr = Transcoder.init();
     defer trnscdr.deinit();
 
+    try testing.expect(trnscdr.validateFileChecksums(test_src_rgb, true));
     try testing.expect(trnscdr.validateHeader(test_src_rgb));
-    _ = try trnscdr.fileInfo(test_src_rgb);
-    _ = try trnscdr.imageInfo(test_src_rgb, 0);
     _ = trnscdr.textureType(test_src_rgb);
     _ = try trnscdr.userData(test_src_rgb);
+    _ = try trnscdr.fileInfo(test_src_rgb);
     try std.testing.expectEqual(@as(u32, 1), trnscdr.imageCount(test_src_rgb));
     try std.testing.expectEqual(@as(u32, 9), trnscdr.imageLevelCount(test_src_rgb, 0));
+    _ = try trnscdr.imageLevelDescriptor(test_src_rgb, 0, 0);
+    _ = try trnscdr.imageInfo(test_src_rgb, 0);
+    _ = try trnscdr.imageLevelInfo(test_src_rgb, 0, 0);
 }
