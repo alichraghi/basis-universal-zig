@@ -106,7 +106,7 @@ pub const TranscoderTextureFormat = enum(u5) {
     tfetc2_eac_rg11 = 21,
 };
 
-pub const ImageLevelDescription = struct {
+pub const ImageLevelDescriptor = struct {
     original_width: u32,
     original_height: u32,
     block_count: u32,
@@ -163,33 +163,25 @@ pub const DecodeFlags = packed struct {
     };
 
     pub fn from(bits: u32) DecodeFlags {
-        return bitFieldsToStruct(DecodeFlags, Flag, bits);
+        var value = std.mem.zeroes(DecodeFlags);
+        inline for (comptime std.meta.fieldNames(Flag)) |field_name| {
+            if (bits & (@enumToInt(@field(Flag, field_name))) != 0) {
+                @field(value, field_name) = true;
+            }
+        }
+        return value;
     }
 
     pub fn cast(self: DecodeFlags) u32 {
-        return structToBitFields(u32, Flag, self);
+        var value: u32 = 0;
+        inline for (comptime std.meta.fieldNames(Flag)) |field_name| {
+            if (@field(self, field_name)) {
+                value |= @enumToInt(@field(Flag, field_name));
+            }
+        }
+        return value;
     }
 };
-
-fn structToBitFields(comptime IntType: type, comptime EnumDataType: type, flags: anytype) IntType {
-    var value: IntType = 0;
-    inline for (comptime std.meta.fieldNames(EnumDataType)) |field_name| {
-        if (@field(flags, field_name)) {
-            value |= @enumToInt(@field(EnumDataType, field_name));
-        }
-    }
-    return value;
-}
-
-fn bitFieldsToStruct(comptime StructType: type, comptime EnumDataType: type, flags: anytype) StructType {
-    var value = std.mem.zeroes(StructType);
-    inline for (comptime std.meta.fieldNames(EnumDataType)) |field_name| {
-        if (flags & (@enumToInt(@field(EnumDataType, field_name))) != 0) {
-            @field(value, field_name) = true;
-        }
-    }
-    return value;
-}
 
 const Transcoder = @This();
 
@@ -207,13 +199,54 @@ pub fn deinit(self: Transcoder) void {
     binding.transcoder_deinit(self.handle);
 }
 
-pub fn validateHeader(self: Transcoder, data: []const u8) bool {
-    return binding.transcoder_validate_header(self.handle, @ptrCast(*const anyopaque, &data[0]), @intCast(u32, data.len));
+pub fn validateFileChecksums(self: Transcoder, data: []const u8, full_validation: bool) bool {
+    return binding.transcoder_validate_file_checksums(self.handle, data.ptr, @intCast(u32, data.len), full_validation);
 }
 
-pub fn getFileInfo(self: Transcoder, data: []const u8) error{ InvalidTextureFormat, Unknown }!FileInfo {
+pub fn validateHeader(self: Transcoder, data: []const u8) bool {
+    return binding.transcoder_validate_header(self.handle, data.ptr, @intCast(u32, data.len));
+}
+
+pub fn textureType(self: Transcoder, data: []const u8) BasisTextureType {
+    return @intToEnum(BasisTextureType, binding.transcoder_get_texture_type(self.handle, data.ptr, @intCast(u32, data.len)));
+}
+
+pub fn userData(self: Transcoder, data: []const u8) error{Unknown}![2]u32 {
+    var ud: [2]u32 = undefined;
+    return if (binding.transcoder_get_userdata(self.handle, data.ptr, @intCast(u32, data.len), &ud[0], &ud[1]))
+        ud
+    else
+        error.Unknown;
+}
+
+pub fn imageCount(self: Transcoder, data: []const u8) u32 {
+    return binding.transcoder_get_total_images(self.handle, data.ptr, @intCast(u32, data.len));
+}
+
+pub fn imageLevelCount(self: Transcoder, data: []const u8, image_index: u32) u32 {
+    return binding.transcoder_get_total_image_levels(self.handle, data.ptr, @intCast(u32, data.len), image_index);
+}
+
+pub fn imageLevelDescriptor(self: Transcoder, data: []const u8, image_index: u32, level_index: u32) error{Unknown}!ImageLevelDescriptor {
+    var desc: ImageLevelDescriptor = undefined;
+    return if (binding.transcoder_get_image_level_desc(
+        self.handle,
+        data.ptr,
+        @intCast(u32, data.len),
+        image_index,
+        level_index,
+        &desc.original_width,
+        &desc.original_height,
+        &desc.block_count,
+    ))
+        desc
+    else
+        error.Unknown;
+}
+
+pub fn fileInfo(self: Transcoder, data: []const u8) error{ InvalidTextureFormat, Unknown }!FileInfo {
     var fi: binding.FileInfo = undefined;
-    if (binding.transcoder_get_file_info(self.handle, @ptrCast(*const anyopaque, &data[0]), @intCast(u32, data.len), &fi)) {
+    if (binding.transcoder_get_file_info(self.handle, data.ptr, @intCast(u32, data.len), &fi)) {
         if (fi.m_tex_format == -1)
             return error.InvalidTextureFormat;
 
@@ -241,10 +274,10 @@ pub fn getFileInfo(self: Transcoder, data: []const u8) error{ InvalidTextureForm
     }
 }
 
-pub fn getImageInfo(self: Transcoder, data: []const u8, index: u32) error{Unknown}!ImageInfo {
+pub fn imageInfo(self: Transcoder, data: []const u8, index: u32) error{Unknown}!ImageInfo {
     var ii: binding.ImageInfo = undefined;
-    if (binding.transcoder_get_image_info(self.handle, @ptrCast(*const anyopaque, &data[0]), @intCast(u32, data.len), &ii, index)) {
-        return ImageInfo{
+    return if (binding.transcoder_get_image_info(self.handle, data.ptr, @intCast(u32, data.len), &ii, index))
+        ImageInfo{
             .index = ii.m_image_index,
             .total_levels = ii.m_total_levels,
             .original_width = ii.m_orig_width,
@@ -257,19 +290,22 @@ pub fn getImageInfo(self: Transcoder, data: []const u8, index: u32) error{Unknow
             .first_slice_index = ii.m_first_slice_index,
             .alpha_flag = ii.m_alpha_flag,
             .iframe_flag = ii.m_iframe_flag,
-        };
-    } else {
-        return error.Unknown;
-    }
+        }
+    else
+        error.Unknown;
 }
 
 const test_src_rgb = @import("basis_test_sources").src_rgb;
 
-test "read info" {
+test "simple" {
     const trnscdr = Transcoder.init();
     defer trnscdr.deinit();
 
     try testing.expect(trnscdr.validateHeader(test_src_rgb));
-    _ = try trnscdr.getFileInfo(test_src_rgb);
-    _ = try trnscdr.getImageInfo(test_src_rgb, 0);
+    _ = try trnscdr.fileInfo(test_src_rgb);
+    _ = try trnscdr.imageInfo(test_src_rgb, 0);
+    _ = trnscdr.textureType(test_src_rgb);
+    _ = try trnscdr.userData(test_src_rgb);
+    try std.testing.expectEqual(@as(u32, 1), trnscdr.imageCount(test_src_rgb));
+    try std.testing.expectEqual(@as(u32, 9), trnscdr.imageLevelCount(test_src_rgb, 0));
 }

@@ -98,10 +98,10 @@ pub extern fn low_level_uastc_transcoder_init() *BasisuLowlevelUASTCTranscoder;
 pub extern fn low_level_uastc_transcoder_deinit(*BasisuLowlevelUASTCTranscoder) void;
 pub extern fn low_level_uastc_transcoder_transcode_slice(
     *BasisuLowlevelUASTCTranscoder,
-    p_dst_blocks: *anyopaque, // TODO
+    p_dst_blocks: [*]u8,
     num_blocks_x: u32,
     num_blocks_y: u32,
-    p_image_data: [*]const u8, // TODO
+    p_image_data: [*]const u8,
     image_data_size: u32,
     format: c_int,
     output_block_or_pixel_stride_in_bytes: u32,
@@ -118,16 +118,16 @@ pub extern fn low_level_uastc_transcoder_transcode_slice(
 ) bool;
 pub extern fn transcoder_init() *BasisuTranscoder;
 pub extern fn transcoder_deinit(*BasisuTranscoder) void;
-pub extern fn transcoder_validate_file_checksums(*const BasisuTranscoder, *const anyopaque, u32, full_validation: bool) bool;
-pub extern fn transcoder_validate_header(*const BasisuTranscoder, *const anyopaque, u32) bool;
-pub extern fn transcoder_get_texture_type(*const BasisuTranscoder, *const anyopaque, u32) BasisTextureType;
-pub extern fn transcoder_get_userdata(*const BasisuTranscoder, *const anyopaque, u32, userdata0: *u32, userdata1: *u32) bool;
-pub extern fn transcoder_get_total_images(*const BasisuTranscoder, *const anyopaque, u32) u32;
-pub extern fn transcoder_get_tex_format(*const BasisuTranscoder, *const anyopaque, u32) BasisTextureFormat;
-pub extern fn transcoder_get_total_image_levels(*const BasisuTranscoder, *const anyopaque, u32, index: u32) u32;
+pub extern fn transcoder_validate_file_checksums(*const BasisuTranscoder, [*]const u8, u32, full_validation: bool) bool;
+pub extern fn transcoder_validate_header(*const BasisuTranscoder, [*]const u8, u32) bool;
+pub extern fn transcoder_get_texture_type(*const BasisuTranscoder, [*]const u8, u32) BasisTextureType;
+pub extern fn transcoder_get_userdata(*const BasisuTranscoder, [*]const u8, u32, userdata0: *u32, userdata1: *u32) bool;
+pub extern fn transcoder_get_total_images(*const BasisuTranscoder, [*]const u8, u32) u32;
+pub extern fn transcoder_get_tex_format(*const BasisuTranscoder, [*]const u8, u32) BasisTextureFormat;
+pub extern fn transcoder_get_total_image_levels(*const BasisuTranscoder, [*]const u8, u32, index: u32) u32;
 pub extern fn transcoder_get_image_level_desc(
     *const BasisuTranscoder,
-    *const anyopaque,
+    [*]const u8,
     u32,
     image_index: u32,
     level_index: u32,
@@ -135,26 +135,26 @@ pub extern fn transcoder_get_image_level_desc(
     orig_height: *u32,
     total_blocks: *u32,
 ) bool;
-pub extern fn transcoder_get_image_info(*const BasisuTranscoder, *const anyopaque, u32, image_info: *ImageInfo, image_index: u32) bool;
+pub extern fn transcoder_get_image_info(*const BasisuTranscoder, [*]const u8, u32, image_info: *ImageInfo, image_index: u32) bool;
 pub extern fn transcoder_get_image_level_info(
     *const BasisuTranscoder,
-    *const anyopaque,
+    [*]const u8,
     u32,
     level_info: *ImageLevelInfo,
     image_index: u32,
     level_index: u32,
 ) bool;
-pub extern fn transcoder_get_file_info(*const BasisuTranscoder, *const anyopaque, u32, *FileInfo) bool;
-pub extern fn transcoder_start_transcoding(*const BasisuTranscoder, *const anyopaque, u32) bool;
+pub extern fn transcoder_get_file_info(*const BasisuTranscoder, [*]const u8, u32, *FileInfo) bool;
+pub extern fn transcoder_start_transcoding(*const BasisuTranscoder, [*]const u8, u32) bool;
 pub extern fn transcoder_stop_transcoding(*const BasisuTranscoder) bool;
 pub extern fn transcoder_get_ready_to_transcode(*const BasisuTranscoder) bool;
 pub extern fn transcoder_transcode_image_level(
     *const BasisuTranscoder,
-    *const anyopaque,
+    [*]const u8,
     u32,
     image_index: u32,
     level_index: u32,
-    p_output_blocks: *anyopaque,
+    p_output_blocks: [*]u8,
     output_blocks_buf_size_in_blocks_or_pixels: u32,
     format: TranscoderTextureFormat,
     decode_flags: BasisuDecodeFlags,
