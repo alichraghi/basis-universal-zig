@@ -2,16 +2,8 @@ const std = @import("std");
 const testing = std.testing;
 pub const binding = @import("binding.zig");
 
-var init_called = std.atomic.Atomic(bool).init(false);
-var init_lock = std.Thread.Mutex{};
-
 fn prepare_transcoding() void {
-    init_lock.lock();
-    defer init_lock.unlock();
-    if (!init_called.load(.Acquire)) {
-        binding.basisu_transcoder_init();
-        init_called.store(true, .Release);
-    }
+    binding.basisu_transcoder_init();
 }
 
 const Transcoder = @This();
@@ -34,11 +26,15 @@ pub fn validateHeader(self: Transcoder, data: []const u8) bool {
     return binding.transcoder_validate_header(self.handle, data.ptr, @intCast(u32, data.len));
 }
 
-pub fn textureType(self: Transcoder, data: []const u8) BasisTextureType {
+pub fn getTextureType(self: Transcoder, data: []const u8) BasisTextureType {
     return @intToEnum(BasisTextureType, binding.transcoder_get_texture_type(self.handle, data.ptr, @intCast(u32, data.len)));
 }
 
-pub fn userData(self: Transcoder, data: []const u8) error{Unknown}![2]u32 {
+pub fn getTextureFormat(self: Transcoder, data: []const u8) BasisTextureFormat {
+    return @intToEnum(BasisTextureFormat, binding.transcoder_get_tex_format(self.handle, data.ptr, @intCast(u32, data.len)));
+}
+
+pub fn getUserData(self: Transcoder, data: []const u8) error{Unknown}![2]u32 {
     var ud: [2]u32 = undefined;
     return if (binding.transcoder_get_userdata(self.handle, data.ptr, @intCast(u32, data.len), &ud[0], &ud[1]))
         ud
@@ -46,21 +42,52 @@ pub fn userData(self: Transcoder, data: []const u8) error{Unknown}![2]u32 {
         error.Unknown;
 }
 
-pub fn imageCount(self: Transcoder, data: []const u8) u32 {
+pub fn getImageCount(self: Transcoder, data: []const u8) u32 {
     return binding.transcoder_get_total_images(self.handle, data.ptr, @intCast(u32, data.len));
 }
 
-pub fn imageLevelCount(self: Transcoder, data: []const u8, image_index: u32) u32 {
+pub fn getImageLevelCount(self: Transcoder, data: []const u8, image_index: u32) u32 {
     return binding.transcoder_get_total_image_levels(self.handle, data.ptr, @intCast(u32, data.len), image_index);
 }
 
-pub fn start(self: Transcoder, data: []const u8) error{Unknown}!void {
-    prepare_transcoding();
-    if (binding.transcoder_start_transcoding(self.handle, data.ptr, @intCast(u32, data.len)) == false)
+pub fn startTranscoding(self: Transcoder, data: []const u8) error{Unknown}!void {
+    if (!binding.transcoder_start_transcoding(self.handle, data.ptr, @intCast(u32, data.len)))
         return error.Unknown;
 }
 
-pub fn fileInfo(self: Transcoder, data: []const u8) error{ InvalidTextureFormat, Unknown }!FileInfo {
+pub fn stopTranscoding(self: Transcoder) error{Unknown}!void {
+    if (!binding.transcoder_stop_transcoding(self.handle))
+        return error.Unknown;
+}
+
+pub const TranscodeError = error{
+    UnsupportedFormat,
+    OutOfBoundsLevelIndex,
+    Unknown,
+};
+
+pub fn transcodeImageLevel(self: Transcoder, out_buf: []u8, data: []const u8, format: TranscoderTextureFormat, params: TranscodeParams) TranscodeError!void {
+    if (!self.getTextureFormat(data).isEnabled(format)) {
+        return error.UnsupportedFormat;
+    }
+
+    if (!binding.transcoder_transcode_image_level(
+        self.handle,
+        data.ptr,
+        @intCast(u32, data.len),
+        params.image_index,
+        params.level_index,
+        out_buf.ptr,
+        @intCast(u32, out_buf.len),
+        @enumToInt(format),
+        if (params.decode_flags) |f| f.cast() else 0,
+        params.output_row_pitch orelse 0,
+        null,
+        params.output_rows orelse 0,
+    )) return error.Unknown;
+}
+
+pub fn getFileInfo(self: Transcoder, data: []const u8) error{ InvalidTextureFormat, Unknown }!FileInfo {
     var fi: binding.FileInfo = undefined;
     if (binding.transcoder_get_file_info(self.handle, data.ptr, @intCast(u32, data.len), &fi)) {
         if (fi.m_tex_format == -1)
@@ -90,7 +117,7 @@ pub fn fileInfo(self: Transcoder, data: []const u8) error{ InvalidTextureFormat,
     }
 }
 
-pub fn imageLevelDescriptor(self: Transcoder, data: []const u8, image_index: u32, level_index: u32) error{Unknown}!ImageLevelDescriptor {
+pub fn getImageLevelDescriptor(self: Transcoder, data: []const u8, image_index: u32, level_index: u32) error{Unknown}!ImageLevelDescriptor {
     var desc: ImageLevelDescriptor = undefined;
     return if (binding.transcoder_get_image_level_desc(
         self.handle,
@@ -107,7 +134,7 @@ pub fn imageLevelDescriptor(self: Transcoder, data: []const u8, image_index: u32
         error.Unknown;
 }
 
-pub fn imageInfo(self: Transcoder, data: []const u8, image_index: u32) error{Unknown}!ImageInfo {
+pub fn getImageInfo(self: Transcoder, data: []const u8, image_index: u32) error{Unknown}!ImageInfo {
     var ii: binding.ImageInfo = undefined;
     return if (binding.transcoder_get_image_info(self.handle, data.ptr, @intCast(u32, data.len), &ii, image_index))
         ImageInfo{
@@ -128,7 +155,7 @@ pub fn imageInfo(self: Transcoder, data: []const u8, image_index: u32) error{Unk
         error.Unknown;
 }
 
-pub fn imageLevelInfo(self: Transcoder, data: []const u8, image_index: u32, level_index: u32) error{Unknown}!ImageLevelInfo {
+pub fn getImageLevelInfo(self: Transcoder, data: []const u8, image_index: u32, level_index: u32) error{Unknown}!ImageLevelInfo {
     var ii: binding.ImageLevelInfo = undefined;
     return if (binding.transcoder_get_image_level_info(self.handle, data.ptr, @intCast(u32, data.len), &ii, image_index, level_index))
         ImageLevelInfo{
@@ -153,37 +180,135 @@ pub fn imageLevelInfo(self: Transcoder, data: []const u8, image_index: u32, leve
         error.Unknown;
 }
 
-pub const TextureFormat = enum(u5) {
-    etc1 = 0,
-    etc1s = 1,
-    etc2_rgb = 2,
-    etc2_rgba = 3,
-    etc2_alpha = 4,
-    bc1 = 5,
-    bc3 = 6,
-    bc4 = 7,
-    bc5 = 8,
-    bc7 = 9,
-    astc4x4 = 10,
-    pvrtc1_4_rgb = 11,
-    pvrtc1_4_rgba = 12,
-    atc_rgb = 13,
-    atc_rgba_interpolated_alpha = 14,
-    fxt1_rgb = 15,
-    pvrtc2_4_rgba = 16,
-    etc2_r11_eac = 17,
-    etc2_rg11_eac = 18,
-    uastc4x4 = 19,
-    bc1_nv = 20,
-    bc1_amd = 21,
-    rgba32 = 22,
-    rgb565 = 23,
-    bgr565 = 24,
-    rgba4444 = 25,
-    abgr4444 = 26,
+pub const BasisTextureType = enum(u3) {
+    _2d = 0,
+    _2d_array = 1,
+    cubemap_array = 2,
+    video_frames = 3,
+    volume = 4,
+
+    pub fn name(self: BasisTextureType) []const u8 {
+        return std.mem.span(binding.basis_get_texture_type_name(@enumToInt(self)));
+    }
 };
 
-pub const BlockFormat = enum(u5) {
+pub const BasisTextureFormat = enum(u1) {
+    etc1s = 0,
+    uastc4x4 = 1,
+
+    pub fn isEnabled(self: BasisTextureFormat, transcoder_format: TranscoderTextureFormat) bool {
+        return binding.basis_is_format_supported(@enumToInt(self), @enumToInt(transcoder_format));
+    }
+};
+
+pub const TranscoderTextureFormat = enum(u5) {
+    etc1_rgb = 0,
+    etc2_rgba = 1,
+    bc1_rgb = 2,
+    bc3_rgba = 3,
+    bc4_r = 4,
+    bc5_rg = 5,
+    bc7_rgba = 6,
+    bc7_alt = 7,
+    pvrtc1_4_rgb = 8,
+    pvrtc1_4_rgba = 9,
+    astc_4x4_rgba = 10,
+    atc_rgb = 11,
+    atc_rgba = 12,
+    rgba32 = 13,
+    rgb565 = 14,
+    bgr565 = 15,
+    rgba4444 = 16,
+    fxt1_rgb = 17,
+    pvrtc2_4_rgb = 18,
+    pvrtc2_4_rgba = 19,
+    etc2_eac_r11 = 20,
+    etc2_eac_rg11 = 21,
+
+    pub fn isEnabled(
+        self: TranscoderTextureFormat,
+        basis_texture_format: BasisTextureFormat,
+    ) bool {
+        return basis_texture_format.isEnabled(self);
+    }
+
+    pub fn hasAlpha(self: TranscoderTextureFormat) bool {
+        return binding.basis_transcoder_format_has_alpha(@enumToInt(self));
+    }
+
+    pub fn isUncompressed(self: TranscoderTextureFormat) bool {
+        return binding.basis_transcoder_format_is_uncompressed(@enumToInt(self));
+    }
+
+    pub fn bytesPerBlockOrPixel(self: TranscoderTextureFormat) u32 {
+        return binding.basis_get_bytes_per_block_or_pixel(@enumToInt(self));
+    }
+
+    pub fn uncompressedBytesPerPixel(self: TranscoderTextureFormat) u32 {
+        return binding.basis_get_uncompressed_bytes_per_pixel(@enumToInt(self));
+    }
+
+    pub fn blockWidth(self: TranscoderTextureFormat) u32 {
+        return binding.basis_get_block_width(@enumToInt(self));
+    }
+
+    pub fn blockHeight(self: TranscoderTextureFormat) u32 {
+        return binding.basis_get_block_height(@enumToInt(self));
+    }
+
+    pub fn name(self: TranscoderTextureFormat) []const u8 {
+        return std.mem.span(binding.basis_get_format_name(@enumToInt(self)));
+    }
+
+    pub fn validateOutputBufferSize(
+        self: TranscoderTextureFormat,
+        output_blocks_buf_size_in_blocks_or_pixels: u32,
+        original_width: u32,
+        original_height: u32,
+        total_slice_blocks: u32,
+        output_row_pitch_in_blocks_or_pixels: ?u32,
+        output_rows_in_pixels: ?u32,
+    ) bool {
+        return binding.basis_validate_output_buffer_size(
+            @enumToInt(self),
+            output_blocks_buf_size_in_blocks_or_pixels,
+            original_width,
+            original_height,
+            output_row_pitch_in_blocks_or_pixels orelse 0,
+            output_rows_in_pixels orelse 0,
+            total_slice_blocks,
+        );
+    }
+
+    pub fn minOutputBufSize(
+        self: TranscoderTextureFormat,
+        original_width: u32,
+        original_height: u32,
+        total_slice_blocks: u32,
+        output_row_pitch_in_blocks_or_pixels: ?u32,
+        output_rows_in_pixels: ?u32,
+    ) u32 {
+        const res = if (self.isUncompressed())
+            (output_rows_in_pixels orelse original_height) * (output_row_pitch_in_blocks_or_pixels orelse original_width)
+        else if (self == .fxt1_rgb)
+            ((original_width + 7) / 8) * ((original_height + 3) / 4)
+        else
+            total_slice_blocks;
+
+        std.debug.assert(self.validateOutputBufferSize(
+            res,
+            original_width,
+            original_height,
+            total_slice_blocks,
+            output_row_pitch_in_blocks_or_pixels,
+            output_rows_in_pixels,
+        ));
+
+        return res * self.bytesPerBlockOrPixel();
+    }
+};
+
+pub const TranscoderBlockFormat = enum(u5) {
     etc1 = 0,
     etc2_rgba = 1,
     bc1 = 2,
@@ -215,44 +340,14 @@ pub const BlockFormat = enum(u5) {
     rgba4444_color_opaque = 29,
     rgba4444 = 30,
     uastc_4x4 = 31,
-};
 
-pub const BasisTextureType = enum(u3) {
-    _2d = 0,
-    _2d_array = 1,
-    cubemap_array = 2,
-    video_frames = 3,
-    volume = 4,
-};
+    pub fn name(self: TranscoderBlockFormat) []const u8 {
+        return std.mem.span(binding.basis_get_block_format_name(@enumToInt(self)));
+    }
 
-pub const BasisTextureFormat = enum(u1) {
-    etc1s = 0,
-    uastc4x4 = 1,
-};
-
-pub const TranscoderTextureFormat = enum(u5) {
-    tfetc1_rgb = 0,
-    tfetc2_rgba = 1,
-    tfbc1_rgb = 2,
-    tfbc3_rgba = 3,
-    tfbc4_r = 4,
-    tfbc5_rg = 5,
-    tfbc7_rgba = 6,
-    tfbc7_alt = 7,
-    tfpvrtc1_4_rgb = 8,
-    tfpvrtc1_4_rgba = 9,
-    tfastc_4x4_rgba = 10,
-    tfatc_rgb = 11,
-    tfatc_rgba = 12,
-    tfrgba32 = 13,
-    tfrgb565 = 14,
-    tfbgr565 = 15,
-    tfrgba4444 = 16,
-    tffxt1_rgb = 17,
-    tfpvrtc2_4_rgb = 18,
-    tfpvrtc2_4_rgba = 19,
-    tfetc2_eac_r11 = 20,
-    tfetc2_eac_rg11 = 21,
+    pub fn isUncompressed(self: TranscoderBlockFormat) bool {
+        return binding.basis_block_format_is_uncompressed(@enumToInt(self));
+    }
 };
 
 pub const ImageLevelDescriptor = struct {
@@ -315,6 +410,16 @@ pub const FileInfo = struct {
     has_alpha_slices: bool,
 };
 
+pub const TranscodeParams = struct {
+    image_index: u32,
+    level_index: u32,
+    decode_flags: ?DecodeFlags,
+    /// in blocks or pixels
+    output_row_pitch: ?u32,
+    /// in pixels
+    output_rows: ?u32,
+};
+
 pub const DecodeFlags = packed struct {
     pvrtc_decode_to_next_pow_2: bool = false,
     transcode_alpha_data_to_opaque_formats: bool = false,
@@ -359,13 +464,17 @@ test "transcode" {
 
     try testing.expect(trnscdr.validateFileChecksums(test_src_rgb, true));
     try testing.expect(trnscdr.validateHeader(test_src_rgb));
-    _ = trnscdr.textureType(test_src_rgb);
-    _ = try trnscdr.userData(test_src_rgb);
-    _ = try trnscdr.fileInfo(test_src_rgb);
-    try std.testing.expectEqual(@as(u32, 1), trnscdr.imageCount(test_src_rgb));
-    try std.testing.expectEqual(@as(u32, 9), trnscdr.imageLevelCount(test_src_rgb, 0));
-    _ = try trnscdr.imageLevelDescriptor(test_src_rgb, 0, 0);
-    _ = try trnscdr.imageInfo(test_src_rgb, 0);
-    _ = try trnscdr.imageLevelInfo(test_src_rgb, 0, 0);
-    _ = try trnscdr.start(test_src_rgb);
+    _ = trnscdr.getTextureType(test_src_rgb);
+    _ = try trnscdr.getUserData(test_src_rgb);
+    _ = try trnscdr.getFileInfo(test_src_rgb);
+    try std.testing.expectEqual(@as(u32, 1), trnscdr.getImageCount(test_src_rgb));
+    try std.testing.expectEqual(@as(u32, 9), trnscdr.getImageLevelCount(test_src_rgb, 0));
+    _ = try trnscdr.getImageLevelDescriptor(test_src_rgb, 0, 0);
+    _ = try trnscdr.getImageInfo(test_src_rgb, 0);
+    _ = try trnscdr.getImageLevelInfo(test_src_rgb, 0, 0);
+}
+
+test "enums/flags" {
+    try testing.expectEqualStrings("2D", BasisTextureType._2d.name());
+    try testing.expect(BasisTextureFormat.etc1s.isEnabled(.etc1_rgb));
 }
