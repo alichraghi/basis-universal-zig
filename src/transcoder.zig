@@ -2,7 +2,156 @@ const std = @import("std");
 const testing = std.testing;
 pub const binding = @import("binding.zig");
 
-var global_inited = false;
+var init_called = std.atomic.Atomic(bool).init(false);
+var init_lock = std.Thread.Mutex{};
+
+fn prepare_transcoding() void {
+    init_lock.lock();
+    defer init_lock.unlock();
+    if (!init_called.load(.Acquire)) {
+        binding.basisu_transcoder_init();
+        init_called.store(true, .Release);
+    }
+}
+
+const Transcoder = @This();
+
+handle: *binding.BasisuTranscoder,
+
+pub fn init() Transcoder {
+    return .{ .handle = binding.transcoder_init() };
+}
+
+pub fn deinit(self: Transcoder) void {
+    binding.transcoder_deinit(self.handle);
+}
+
+pub fn validateFileChecksums(self: Transcoder, data: []const u8, full_validation: bool) bool {
+    return binding.transcoder_validate_file_checksums(self.handle, data.ptr, @intCast(u32, data.len), full_validation);
+}
+
+pub fn validateHeader(self: Transcoder, data: []const u8) bool {
+    return binding.transcoder_validate_header(self.handle, data.ptr, @intCast(u32, data.len));
+}
+
+pub fn textureType(self: Transcoder, data: []const u8) BasisTextureType {
+    return @intToEnum(BasisTextureType, binding.transcoder_get_texture_type(self.handle, data.ptr, @intCast(u32, data.len)));
+}
+
+pub fn userData(self: Transcoder, data: []const u8) error{Unknown}![2]u32 {
+    var ud: [2]u32 = undefined;
+    return if (binding.transcoder_get_userdata(self.handle, data.ptr, @intCast(u32, data.len), &ud[0], &ud[1]))
+        ud
+    else
+        error.Unknown;
+}
+
+pub fn imageCount(self: Transcoder, data: []const u8) u32 {
+    return binding.transcoder_get_total_images(self.handle, data.ptr, @intCast(u32, data.len));
+}
+
+pub fn imageLevelCount(self: Transcoder, data: []const u8, image_index: u32) u32 {
+    return binding.transcoder_get_total_image_levels(self.handle, data.ptr, @intCast(u32, data.len), image_index);
+}
+
+pub fn start(self: Transcoder, data: []const u8) error{Unknown}!void {
+    prepare_transcoding();
+    if (binding.transcoder_start_transcoding(self.handle, data.ptr, @intCast(u32, data.len)) == false)
+        return error.Unknown;
+}
+
+pub fn fileInfo(self: Transcoder, data: []const u8) error{ InvalidTextureFormat, Unknown }!FileInfo {
+    var fi: binding.FileInfo = undefined;
+    if (binding.transcoder_get_file_info(self.handle, data.ptr, @intCast(u32, data.len), &fi)) {
+        if (fi.m_tex_format == -1)
+            return error.InvalidTextureFormat;
+
+        return FileInfo{
+            .version = fi.m_version,
+            .total_header_size = fi.m_total_header_size,
+            .total_selectors = fi.m_total_selectors,
+            .selector_codebook_offset = fi.m_selector_codebook_ofs,
+            .selector_codebook_size = fi.m_selector_codebook_size,
+            .tables_offset = fi.m_tables_ofs,
+            .tables_size = fi.m_tables_size,
+            .slices_size = fi.m_slices_size,
+            .texture_type = @intToEnum(BasisTextureType, fi.m_tex_type),
+            .us_per_frame = fi.m_us_per_frame,
+            .total_images = fi.m_total_images,
+            .userdata_0 = fi.m_userdata0,
+            .userdata_1 = fi.m_userdata1,
+            .texture_format = @intToEnum(BasisTextureFormat, fi.m_tex_format),
+            .y_flipped = fi.m_y_flipped,
+            .is_etc1s = fi.m_etc1s,
+            .has_alpha_slices = fi.m_has_alpha_slices,
+        };
+    } else {
+        return error.Unknown;
+    }
+}
+
+pub fn imageLevelDescriptor(self: Transcoder, data: []const u8, image_index: u32, level_index: u32) error{Unknown}!ImageLevelDescriptor {
+    var desc: ImageLevelDescriptor = undefined;
+    return if (binding.transcoder_get_image_level_desc(
+        self.handle,
+        data.ptr,
+        @intCast(u32, data.len),
+        image_index,
+        level_index,
+        &desc.original_width,
+        &desc.original_height,
+        &desc.block_count,
+    ))
+        desc
+    else
+        error.Unknown;
+}
+
+pub fn imageInfo(self: Transcoder, data: []const u8, image_index: u32) error{Unknown}!ImageInfo {
+    var ii: binding.ImageInfo = undefined;
+    return if (binding.transcoder_get_image_info(self.handle, data.ptr, @intCast(u32, data.len), &ii, image_index))
+        ImageInfo{
+            .image_index = ii.m_image_index,
+            .total_levels = ii.m_total_levels,
+            .original_width = ii.m_orig_width,
+            .original_height = ii.m_orig_height,
+            .width = ii.m_width,
+            .height = ii.m_height,
+            .num_blocks_x = ii.m_num_blocks_x,
+            .num_blocks_y = ii.m_num_blocks_y,
+            .total_blocks = ii.m_total_blocks,
+            .first_slice_index = ii.m_first_slice_index,
+            .alpha_flag = ii.m_alpha_flag,
+            .iframe_flag = ii.m_iframe_flag,
+        }
+    else
+        error.Unknown;
+}
+
+pub fn imageLevelInfo(self: Transcoder, data: []const u8, image_index: u32, level_index: u32) error{Unknown}!ImageLevelInfo {
+    var ii: binding.ImageLevelInfo = undefined;
+    return if (binding.transcoder_get_image_level_info(self.handle, data.ptr, @intCast(u32, data.len), &ii, image_index, level_index))
+        ImageLevelInfo{
+            .image_index = ii.m_image_index,
+            .level_index = ii.m_level_index,
+            .original_width = ii.m_orig_width,
+            .original_height = ii.m_orig_height,
+            .width = ii.m_width,
+            .height = ii.m_height,
+            .num_blocks_x = ii.m_num_blocks_x,
+            .num_blocks_y = ii.m_num_blocks_y,
+            .total_blocks = ii.m_total_blocks,
+            .first_slice_index = ii.m_first_slice_index,
+            .rgb_file_offset = ii.m_rgb_file_ofs,
+            .rgb_file_len = ii.m_rgb_file_len,
+            .alpha_file_offset = ii.m_alpha_file_ofs,
+            .alpha_file_len = ii.m_alpha_file_len,
+            .alpha_flag = ii.m_alpha_flag,
+            .iframe_flag = ii.m_iframe_flag,
+        }
+    else
+        error.Unknown;
+}
 
 pub const TextureFormat = enum(u5) {
     etc1 = 0,
@@ -202,146 +351,9 @@ pub const DecodeFlags = packed struct {
     }
 };
 
-const Transcoder = @This();
-
-handle: *binding.BasisuTranscoder,
-
-pub fn init() Transcoder {
-    if (!global_inited) {
-        binding.basisu_transcoder_init();
-        global_inited = true;
-    }
-    return .{ .handle = binding.transcoder_init() };
-}
-
-pub fn deinit(self: Transcoder) void {
-    binding.transcoder_deinit(self.handle);
-}
-
-pub fn validateFileChecksums(self: Transcoder, data: []const u8, full_validation: bool) bool {
-    return binding.transcoder_validate_file_checksums(self.handle, data.ptr, @intCast(u32, data.len), full_validation);
-}
-
-pub fn validateHeader(self: Transcoder, data: []const u8) bool {
-    return binding.transcoder_validate_header(self.handle, data.ptr, @intCast(u32, data.len));
-}
-
-pub fn textureType(self: Transcoder, data: []const u8) BasisTextureType {
-    return @intToEnum(BasisTextureType, binding.transcoder_get_texture_type(self.handle, data.ptr, @intCast(u32, data.len)));
-}
-
-pub fn userData(self: Transcoder, data: []const u8) error{Unknown}![2]u32 {
-    var ud: [2]u32 = undefined;
-    return if (binding.transcoder_get_userdata(self.handle, data.ptr, @intCast(u32, data.len), &ud[0], &ud[1]))
-        ud
-    else
-        error.Unknown;
-}
-
-pub fn fileInfo(self: Transcoder, data: []const u8) error{ InvalidTextureFormat, Unknown }!FileInfo {
-    var fi: binding.FileInfo = undefined;
-    if (binding.transcoder_get_file_info(self.handle, data.ptr, @intCast(u32, data.len), &fi)) {
-        if (fi.m_tex_format == -1)
-            return error.InvalidTextureFormat;
-
-        return FileInfo{
-            .version = fi.m_version,
-            .total_header_size = fi.m_total_header_size,
-            .total_selectors = fi.m_total_selectors,
-            .selector_codebook_offset = fi.m_selector_codebook_ofs,
-            .selector_codebook_size = fi.m_selector_codebook_size,
-            .tables_offset = fi.m_tables_ofs,
-            .tables_size = fi.m_tables_size,
-            .slices_size = fi.m_slices_size,
-            .texture_type = @intToEnum(BasisTextureType, fi.m_tex_type),
-            .us_per_frame = fi.m_us_per_frame,
-            .total_images = fi.m_total_images,
-            .userdata_0 = fi.m_userdata0,
-            .userdata_1 = fi.m_userdata1,
-            .texture_format = @intToEnum(BasisTextureFormat, fi.m_tex_format),
-            .y_flipped = fi.m_y_flipped,
-            .is_etc1s = fi.m_etc1s,
-            .has_alpha_slices = fi.m_has_alpha_slices,
-        };
-    } else {
-        return error.Unknown;
-    }
-}
-
-pub fn imageCount(self: Transcoder, data: []const u8) u32 {
-    return binding.transcoder_get_total_images(self.handle, data.ptr, @intCast(u32, data.len));
-}
-
-pub fn imageLevelCount(self: Transcoder, data: []const u8, image_index: u32) u32 {
-    return binding.transcoder_get_total_image_levels(self.handle, data.ptr, @intCast(u32, data.len), image_index);
-}
-
-pub fn imageLevelDescriptor(self: Transcoder, data: []const u8, image_index: u32, level_index: u32) error{Unknown}!ImageLevelDescriptor {
-    var desc: ImageLevelDescriptor = undefined;
-    return if (binding.transcoder_get_image_level_desc(
-        self.handle,
-        data.ptr,
-        @intCast(u32, data.len),
-        image_index,
-        level_index,
-        &desc.original_width,
-        &desc.original_height,
-        &desc.block_count,
-    ))
-        desc
-    else
-        error.Unknown;
-}
-
-pub fn imageInfo(self: Transcoder, data: []const u8, image_index: u32) error{Unknown}!ImageInfo {
-    var ii: binding.ImageInfo = undefined;
-    return if (binding.transcoder_get_image_info(self.handle, data.ptr, @intCast(u32, data.len), &ii, image_index))
-        ImageInfo{
-            .image_index = ii.m_image_index,
-            .total_levels = ii.m_total_levels,
-            .original_width = ii.m_orig_width,
-            .original_height = ii.m_orig_height,
-            .width = ii.m_width,
-            .height = ii.m_height,
-            .num_blocks_x = ii.m_num_blocks_x,
-            .num_blocks_y = ii.m_num_blocks_y,
-            .total_blocks = ii.m_total_blocks,
-            .first_slice_index = ii.m_first_slice_index,
-            .alpha_flag = ii.m_alpha_flag,
-            .iframe_flag = ii.m_iframe_flag,
-        }
-    else
-        error.Unknown;
-}
-
-pub fn imageLevelInfo(self: Transcoder, data: []const u8, image_index: u32, level_index: u32) error{Unknown}!ImageLevelInfo {
-    var ii: binding.ImageLevelInfo = undefined;
-    return if (binding.transcoder_get_image_level_info(self.handle, data.ptr, @intCast(u32, data.len), &ii, image_index, level_index))
-        ImageLevelInfo{
-            .image_index = ii.m_image_index,
-            .level_index = ii.m_level_index,
-            .original_width = ii.m_orig_width,
-            .original_height = ii.m_orig_height,
-            .width = ii.m_width,
-            .height = ii.m_height,
-            .num_blocks_x = ii.m_num_blocks_x,
-            .num_blocks_y = ii.m_num_blocks_y,
-            .total_blocks = ii.m_total_blocks,
-            .first_slice_index = ii.m_first_slice_index,
-            .rgb_file_offset = ii.m_rgb_file_ofs,
-            .rgb_file_len = ii.m_rgb_file_len,
-            .alpha_file_offset = ii.m_alpha_file_ofs,
-            .alpha_file_len = ii.m_alpha_file_len,
-            .alpha_flag = ii.m_alpha_flag,
-            .iframe_flag = ii.m_iframe_flag,
-        }
-    else
-        error.Unknown;
-}
-
 const test_src_rgb = @import("basis_test_sources").src_rgb;
 
-test "simple" {
+test "transcode" {
     const trnscdr = Transcoder.init();
     defer trnscdr.deinit();
 
@@ -355,4 +367,5 @@ test "simple" {
     _ = try trnscdr.imageLevelDescriptor(test_src_rgb, 0, 0);
     _ = try trnscdr.imageInfo(test_src_rgb, 0);
     _ = try trnscdr.imageLevelInfo(test_src_rgb, 0, 0);
+    _ = try trnscdr.start(test_src_rgb);
 }
