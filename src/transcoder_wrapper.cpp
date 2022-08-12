@@ -1,26 +1,11 @@
 #include "../vendor/transcoder/basisu_transcoder.h"
+#include <cstdbool>
 #include <cstdint>
-#include <stdbool.h>
-#include <stdint.h>
-#include <sys/types.h>
 
 extern "C" {
-struct basisu_image_info {
-  uint32_t m_image_index;
-  uint32_t m_total_levels;
-  uint32_t m_orig_width;
-  uint32_t m_orig_height;
-  uint32_t m_width;
-  uint32_t m_height;
-  uint32_t m_num_blocks_x;
-  uint32_t m_num_blocks_y;
-  uint32_t m_total_blocks;
-  uint32_t m_first_slice_index;
-  bool m_alpha_flag;
-  bool m_iframe_flag;
-};
-
 void basis_init();
+
+bool basis_is_format_supported(uint32_t tex_type, uint32_t fmt);
 
 void *basis_open(void *src, uint32_t src_size);
 void basis_close(void *h);
@@ -28,11 +13,9 @@ void basis_close(void *h);
 uint32_t basis_get_images_count(void *h);
 uint32_t basis_get_levels_count(void *h, uint32_t image_index);
 
-bool basis_is_format_supported(uint32_t tex_type, uint32_t fmt);
-
 bool basis_get_image_level_desc(void *h, uint32_t image_index,
                                 uint32_t level_index, uint32_t &orig_width,
-                                uint32_t &orig_height, uint32_t &total_block);
+                                uint32_t &orig_height, uint32_t &block_count);
 
 bool basis_get_image_transcoded_size(void *h, uint32_t image_index,
                                      uint32_t level_index, uint32_t format,
@@ -41,10 +24,11 @@ bool basis_get_image_transcoded_size(void *h, uint32_t image_index,
 bool basis_start_transcoding(void *h);
 bool basis_stop_transcoding(void *h);
 
-uint32_t basis_transcode_image(void *h, void *dst, uint32_t dst_size_in_bytes,
-                               uint32_t image_index, uint32_t level_index,
-                               uint32_t format, uint32_t unused,
-                               uint32_t get_alpha_for_opaque_formats);
+bool basis_transcode_image(void *h, void *out, uint32_t out_size,
+                           uint32_t image_index, uint32_t level_index,
+                           uint32_t format, uint32_t decode_flags,
+                           uint32_t output_row_pitch_in_blocks_or_pixels,
+                           uint32_t output_rows_in_pixels);
 }
 
 void basis_init() { basist::basisu_transcoder_init(); }
@@ -90,22 +74,10 @@ uint32_t basis_get_images_count(void *h) {
   return f->m_transcoder.get_total_images(f->m_pFile, f->m_file_size);
 }
 
-// true - success
-// false - cannot get image info
-bool basis_get_levels_count(void *h, uint32_t image_index,
-                            uint32_t &levels_count) {
+uint32_t basis_get_levels_count(void *h, uint32_t image_index) {
   basis_file *f = static_cast<basis_file *>(h);
-
-  if (f->m_magic != MAGIC) // TODO: Remove
-    exit(1);
-
-  basist::basisu_image_info ii;
-  if (!f->m_transcoder.get_image_info(f->m_pFile, f->m_file_size, ii,
-                                      image_index))
-    return false;
-
-  levels_count = ii.m_total_levels;
-  return true;
+  return f->m_transcoder.get_total_image_levels(f->m_pFile, f->m_file_size,
+                                                image_index);
 }
 
 // transcoder_texture_format, basis_tex_format
@@ -116,10 +88,10 @@ bool basis_is_format_supported(uint32_t tex_type, uint32_t fmt) {
 }
 
 // true - success
-// false - unknown
+// false - OutOfBoundsLevelIndex
 bool basis_get_image_level_desc(void *h, uint32_t image_index,
                                 uint32_t level_index, uint32_t &orig_width,
-                                uint32_t &orig_height, uint32_t &total_blocks) {
+                                uint32_t &orig_height, uint32_t &block_count) {
   basis_file *f = static_cast<basis_file *>(h);
 
   if (f->m_magic != MAGIC) // TODO: Remove
@@ -127,11 +99,11 @@ bool basis_get_image_level_desc(void *h, uint32_t image_index,
 
   return f->m_transcoder.get_image_level_desc(
       f->m_pFile, f->m_file_size, image_index, level_index, orig_width,
-      orig_height, total_blocks);
+      orig_height, block_count);
 }
 
 // true - success
-// false - can't get level descriptor (out of bounds level index)
+// false - OutOfBoundsLevelIndex
 bool basis_get_image_transcoded_size(void *h, uint32_t image_index,
                                      uint32_t level_index, uint32_t format,
                                      uint32_t &size) {
@@ -182,7 +154,7 @@ bool basis_stop_transcoding(void *h) {
 
 // true - success
 // false - unknown
-bool basis_transcode_image(void *h, void *out, uint32_t out_size_in_bytes,
+bool basis_transcode_image(void *h, void *out, uint32_t out_size,
                            uint32_t image_index, uint32_t level_index,
                            uint32_t format, uint32_t decode_flags,
                            uint32_t output_row_pitch_in_blocks_or_pixels,
@@ -197,7 +169,7 @@ bool basis_transcode_image(void *h, void *out, uint32_t out_size_in_bytes,
 
   return f->m_transcoder.transcode_image_level(
       f->m_pFile, f->m_file_size, image_index, level_index, out,
-      out_size_in_bytes / bytes_per_block,
-      (basist::transcoder_texture_format)format, decode_flags,
-      output_row_pitch_in_blocks_or_pixels, nullptr, output_rows_in_pixels);
+      out_size / bytes_per_block, (basist::transcoder_texture_format)format,
+      decode_flags, output_row_pitch_in_blocks_or_pixels, nullptr,
+      output_rows_in_pixels);
 }

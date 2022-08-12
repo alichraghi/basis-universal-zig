@@ -19,7 +19,6 @@ pub fn build(b: *std.build.Builder) void {
         .encoder = true,
         .transcoder = true,
     });
-    main_tests.use_stage1 = false;
 
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&main_tests.step);
@@ -28,7 +27,7 @@ pub fn build(b: *std.build.Builder) void {
 pub fn link(b: *std.build.Builder, step: *std.build.LibExeObjStep, options: Options) void {
     if (options.transcoder) {
         step.linkLibrary(buildBasisuTranscoder(b));
-        step.addCSourceFile(comptime thisDir() ++ "/src/binding.cpp", &.{});
+        step.addCSourceFile(comptime thisDir() ++ "/src/transcoder_wrapper.cpp", &.{});
         step.addIncludeDir(vendor_dir ++ "/transcoder");
     }
 }
@@ -36,7 +35,6 @@ pub fn link(b: *std.build.Builder, step: *std.build.LibExeObjStep, options: Opti
 pub fn buildBasisuTranscoder(b: *std.build.Builder) *std.build.LibExeObjStep {
     const transcoder = b.addStaticLibrary("basisu_transcoder", null);
     transcoder.linkLibCpp();
-    transcoder.use_stage1 = false;
     transcoder.addCSourceFiles(
         &.{
             vendor_dir ++ "/transcoder/basisu_transcoder.cpp",
