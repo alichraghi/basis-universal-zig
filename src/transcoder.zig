@@ -1,5 +1,5 @@
 const std = @import("std");
-pub const b = @import("binding.zig");
+pub const b = @import("transcoder/binding.zig");
 const testing = std.testing;
 
 const Transcoder = @This();

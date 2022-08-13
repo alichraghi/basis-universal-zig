@@ -25,14 +25,33 @@ pub fn build(b: *std.build.Builder) void {
 }
 
 pub fn link(b: *std.build.Builder, step: *std.build.LibExeObjStep, options: Options) void {
+    if (options.encoder) {
+        step.linkLibrary(buildEncoder(b));
+        step.addCSourceFile(comptime thisDir() ++ "/src/encoder/wrapper.cpp", &.{});
+        step.addIncludeDir(vendor_dir ++ "/encoder");
+    }
     if (options.transcoder) {
-        step.linkLibrary(buildBasisuTranscoder(b));
-        step.addCSourceFile(comptime thisDir() ++ "/src/transcoder_wrapper.cpp", &.{});
+        step.linkLibrary(buildTranscoder(b));
+        step.addCSourceFile(comptime thisDir() ++ "/src/transcoder/wrapper.cpp", &.{});
         step.addIncludeDir(vendor_dir ++ "/transcoder");
     }
 }
 
-pub fn buildBasisuTranscoder(b: *std.build.Builder) *std.build.LibExeObjStep {
+pub fn buildEncoder(b: *std.build.Builder) *std.build.LibExeObjStep {
+    const transcoder = b.addStaticLibrary("basisu_transcoder", null);
+    transcoder.linkLibCpp();
+    transcoder.addCSourceFiles(
+        &.{
+            vendor_dir ++ "/transcoder/basisu_transcoder.cpp",
+        },
+        &.{},
+    );
+    transcoder.defineCMacro("BASISD_SUPPORT_KTX2_ZSTD", "0");
+    transcoder.install();
+    return transcoder;
+}
+
+pub fn buildTranscoder(b: *std.build.Builder) *std.build.LibExeObjStep {
     const transcoder = b.addStaticLibrary("basisu_transcoder", null);
     transcoder.linkLibCpp();
     transcoder.addCSourceFiles(

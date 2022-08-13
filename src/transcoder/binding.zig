@@ -2,6 +2,7 @@ pub const BasisFile = opaque {};
 
 pub extern fn basis_init() void;
 pub extern fn basis_is_format_supported(tex_type: u32, fmt: u32) bool;
+
 pub extern fn basis_open([*]const u8, u32) *BasisFile;
 pub extern fn basis_close(*BasisFile) void;
 pub extern fn basis_get_images_count(*BasisFile) u32;

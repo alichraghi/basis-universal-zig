@@ -1,4 +1,4 @@
-#include "../vendor/transcoder/basisu_transcoder.h"
+#include <basisu_transcoder.h>
 #include <cstdbool>
 #include <cstdint>
 
