@@ -38,17 +38,35 @@ pub fn link(b: *std.build.Builder, step: *std.build.LibExeObjStep, options: Opti
 }
 
 pub fn buildEncoder(b: *std.build.Builder) *std.build.LibExeObjStep {
-    const transcoder = b.addStaticLibrary("basisu_transcoder", null);
-    transcoder.linkLibCpp();
-    transcoder.addCSourceFiles(
+    const encoder = b.addStaticLibrary("basisu_encoder", null);
+    encoder.linkLibCpp();
+    encoder.addCSourceFiles(
         &.{
-            vendor_dir ++ "/transcoder/basisu_transcoder.cpp",
+            vendor_dir ++ "/encoder/basisu_backend.cpp",
+            vendor_dir ++ "/encoder/basisu_basis_file.cpp",
+            vendor_dir ++ "/encoder/basisu_bc7enc.cpp",
+            vendor_dir ++ "/encoder/basisu_comp.cpp",
+            vendor_dir ++ "/encoder/basisu_enc.cpp",
+            vendor_dir ++ "/encoder/basisu_etc.cpp",
+            vendor_dir ++ "/encoder/basisu_frontend.cpp",
+            vendor_dir ++ "/encoder/basisu_gpu_texture.cpp",
+            vendor_dir ++ "/encoder/basisu_kernels_sse.cpp",
+            vendor_dir ++ "/encoder/basisu_opencl.cpp",
+            vendor_dir ++ "/encoder/basisu_pvrtc1_4.cpp",
+            vendor_dir ++ "/encoder/basisu_resample_filters.cpp",
+            vendor_dir ++ "/encoder/basisu_resampler.cpp",
+            vendor_dir ++ "/encoder/basisu_ssim.cpp",
+            vendor_dir ++ "/encoder/basisu_uastc_enc.cpp",
+            vendor_dir ++ "/encoder/jpgd.cpp",
+            vendor_dir ++ "/encoder/pvpngreader.cpp",
         },
         &.{},
     );
-    transcoder.defineCMacro("BASISD_SUPPORT_KTX2_ZSTD", "0");
-    transcoder.install();
-    return transcoder;
+
+    encoder.defineCMacro("BASISU_FORCE_DEVEL_MESSAGES", "1");
+    encoder.defineCMacro("BASISD_SUPPORT_KTX2_ZSTD", "0");
+    encoder.install();
+    return encoder;
 }
 
 pub fn buildTranscoder(b: *std.build.Builder) *std.build.LibExeObjStep {

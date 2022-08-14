@@ -18,6 +18,11 @@ void compressor_params_clear(basisu::basis_compressor_params *params) {
   params->clear();
 }
 
+void compressor_params_set_thread_count(basisu::basis_compressor_params *params,
+                                        uint32_t thread_count) {
+  params->m_pJob_pool = new basisu::job_pool(thread_count);
+}
+
 void compressor_params_set_quality_level(
     basisu::basis_compressor_params *params, uint8_t quality_level) {
   params->m_quality_level = quality_level;
@@ -63,14 +68,14 @@ void compressor_params_set_rdo_uastc(basisu::basis_compressor_params *params,
   params->m_rdo_uastc = rdo_uastc;
 }
 
-void compressor_params_set_rdo_uastc_quality_scalar(
-    basisu::basis_compressor_params *params, float rdo_uastc_quality_scalar) {
-  params->m_rdo_uastc_quality_scalar = rdo_uastc_quality_scalar;
-}
-
 void compressor_params_set_generate_mipmaps(
     basisu::basis_compressor_params *params, bool generate_mipmaps) {
   params->m_mip_gen = generate_mipmaps;
+}
+
+void compressor_params_set_rdo_uastc_quality_scalar(
+    basisu::basis_compressor_params *params, float rdo_uastc_quality_scalar) {
+  params->m_rdo_uastc_quality_scalar = rdo_uastc_quality_scalar;
 }
 
 void compressor_params_set_mip_smallest_dimension(
@@ -97,17 +102,47 @@ void compressor_params_clear_source_image_list(
   params->clear();
 }
 
-basisu::basis_compressor *compressor_new() {
-  return new basisu::basis_compressor();
-};
+///
 
-void compressor_delete(basisu::basis_compressor *compressor) {
-  delete compressor;
+void compressor_image_fill(basisu::image *image, const uint8_t *pData,
+                           uint32_t width, uint32_t height, uint32_t comps) {
+  image->init(pData, width, height, comps);
 }
 
-bool compressor_init(basisu::basis_compressor *compressor,
-                     basisu::basis_compressor_params *params) {
-  return compressor->init(*params);
+void compressor_image_resize(basisu::image *image, uint32_t w, uint32_t h,
+                             uint32_t p) {
+  image->resize(w, h, p);
+}
+
+uint32_t compressor_image_get_width(basisu::image *image) {
+  return image->get_width();
+}
+
+uint32_t compressor_image_get_height(basisu::image *image) {
+  return image->get_height();
+}
+
+uint32_t compressor_image_get_pitch(basisu::image *image) {
+  return image->get_pitch();
+}
+
+uint32_t compressor_image_get_total_pixels(basisu::image *image) {
+  return image->get_total_pixels();
+}
+
+///
+
+basisu::basis_compressor *
+compressor_init(basisu::basis_compressor_params *params) {
+  auto comp = new basisu::basis_compressor();
+  if (comp->init(*params))
+    return comp;
+  else
+    return nullptr;
+}
+
+void compressor_deinit(basisu::basis_compressor *compressor) {
+  delete compressor;
 }
 
 basisu::basis_compressor::error_code
@@ -115,26 +150,16 @@ compressor_process(basisu::basis_compressor *compressor) {
   return compressor->process();
 }
 
-struct CompressorBasisFile {
-  const uint8_t *pData;
-  size_t length;
-};
-
-CompressorBasisFile
-compressor_get_output_basis_file(basisu::basis_compressor *compressor) {
-  CompressorBasisFile file;
-  const basisu::uint8_vec &basis_file = compressor->get_output_basis_file();
-  file.pData = basis_file.data();
-  file.length = basis_file.size();
-  return file;
+const uint8_t *compressor_get_output(basisu::basis_compressor *compressor) {
+  return compressor->get_output_basis_file().data();
 }
 
 uint32_t
-compressor_get_basis_file_size(const basisu::basis_compressor *compressor) {
+compressor_get_output_size(const basisu::basis_compressor *compressor) {
   return compressor->get_basis_file_size();
 }
 
-double compressor_get_basis_bits_per_texel(
+double compressor_get_output_bits_per_texel(
     const basisu::basis_compressor *compressor) {
   return compressor->get_basis_bits_per_texel();
 }
