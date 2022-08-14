@@ -14,7 +14,6 @@ pub fn build(b: *std.build.Builder) void {
 
     const main_tests = b.addTest(comptime thisDir() ++ "/src/main.zig");
     main_tests.setBuildMode(mode);
-    main_tests.addPackagePath("basis_test_sources", thisDir() ++ "/test/basis_sources.zig");
     link(b, main_tests, .{
         .encoder = true,
         .transcoder = true,
@@ -63,7 +62,7 @@ pub fn buildEncoder(b: *std.build.Builder) *std.build.LibExeObjStep {
         &.{},
     );
 
-    encoder.defineCMacro("BASISU_FORCE_DEVEL_MESSAGES", "1");
+    encoder.defineCMacro("BASISU_FORCE_DEVEL_MESSAGES", "0");
     encoder.defineCMacro("BASISD_SUPPORT_KTX2_ZSTD", "0");
     encoder.install();
     return encoder;

@@ -75,10 +75,6 @@ void transcoder_deinit(void *h) {
 
 uint32_t transcoder_get_images_count(void *h) {
   auto f = static_cast<basis_file *>(h);
-
-  if (f->m_magic != MAGIC) // TODO: Remove
-    exit(1);
-
   return f->m_transcoder.get_total_images(f->m_pFile, f->m_file_size);
 }
 
@@ -95,10 +91,6 @@ bool transcoder_get_image_level_desc(void *h, uint32_t image_index,
                                      uint32_t &orig_height,
                                      uint32_t &block_count) {
   auto f = static_cast<basis_file *>(h);
-
-  if (f->m_magic != MAGIC) // TODO: Remove
-    exit(1);
-
   return f->m_transcoder.get_image_level_desc(
       f->m_pFile, f->m_file_size, image_index, level_index, orig_width,
       orig_height, block_count);
@@ -110,10 +102,6 @@ bool transcoder_get_image_transcoded_size(void *h, uint32_t image_index,
                                           uint32_t level_index, uint32_t format,
                                           uint32_t &size) {
   auto f = static_cast<basis_file *>(h);
-
-  if (f->m_magic != MAGIC) // TODO: Remove
-    exit(1);
-
   uint32_t orig_width, orig_height, total_blocks;
   if (!f->m_transcoder.get_image_level_desc(
           f->m_pFile, f->m_file_size, image_index, level_index, orig_width,
@@ -136,10 +124,6 @@ bool transcoder_get_image_transcoded_size(void *h, uint32_t image_index,
 // false - unknown
 bool transcoder_start_transcoding(void *h) {
   auto f = static_cast<basis_file *>(h);
-
-  if (f->m_magic != MAGIC) // TODO: Remove
-    exit(1);
-
   return f->m_transcoder.start_transcoding(f->m_pFile, f->m_file_size);
 }
 
@@ -147,10 +131,6 @@ bool transcoder_start_transcoding(void *h) {
 // false - unknown
 bool transcoder_stop_transcoding(void *h) {
   auto f = static_cast<basis_file *>(h);
-
-  if (f->m_magic != MAGIC) // TODO: Remove
-    exit(1);
-
   return f->m_transcoder.stop_transcoding();
 }
 
@@ -162,10 +142,6 @@ bool transcoder_transcode(void *h, void *out, uint32_t out_size,
                           uint32_t output_row_pitch_in_blocks_or_pixels,
                           uint32_t output_rows_in_pixels) {
   auto f = static_cast<basis_file *>(h);
-
-  if (f->m_magic != MAGIC) // TODO: Remove
-    exit(1);
-
   uint32_t bytes_per_block = basis_get_bytes_per_block_or_pixel(
       (basist::transcoder_texture_format)format);
 
