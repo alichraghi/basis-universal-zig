@@ -3,6 +3,7 @@ const b = @import("encoder/binding.zig");
 const BasisTextureFormat = @import("main.zig").BasisTextureFormat;
 const testing = std.testing;
 
+/// Must be called before encoding anything
 pub fn init_encoder() void {
     b.basisu_encoder_init();
 }
@@ -51,6 +52,7 @@ pub const Compressor = struct {
         };
     }
 
+    /// output will be freed with `Compressor.deinit`
     pub fn output(self: Compressor) []const u8 {
         return b.compressor_get_output(self.handle)[0..b.compressor_get_output_size(self.handle)];
     }
@@ -83,6 +85,7 @@ pub const CompressorParams = struct {
         b.compressor_params_clear(self.handle);
     }
 
+    /// `level` ranges from [1, 255]
     pub fn setQualityLevel(self: CompressorParams, level: u8) void {
         b.compressor_params_set_quality_level(self.handle, level);
     }
@@ -116,30 +119,34 @@ pub const CompressorParams = struct {
         });
     }
 
-    pub fn setNoSelectorRDO(self: CompressorParams, disable: bool) void {
-        b.compressor_params_set_no_selector_rdo(self.handle, disable);
+    /// Disable selector RDO, for faster compression but larger files.
+    /// Enabled by default
+    pub fn setSelectorRDO(self: CompressorParams, enable: bool) void {
+        b.compressor_params_set_no_selector_rdo(self.handle, !enable);
     }
 
-    pub fn setNoEndpointRDO(self: CompressorParams, disable: bool) void {
-        b.compressor_params_set_no_endpoint_rdo(self.handle, disable);
+    /// Enabled by default
+    pub fn setEndpointRDO(self: CompressorParams, enable: bool) void {
+        b.compressor_params_set_no_endpoint_rdo(self.handle, !enable);
     }
 
     pub fn setRDO_UASTC(self: CompressorParams, enable: bool) void {
         b.compressor_params_set_rdo_uastc(self.handle, enable);
     }
 
-    pub fn setGenerateMipMaps(self: CompressorParams, enable: bool) void {
-        b.compressor_params_set_generate_mipmaps(self.handle, enable);
-    }
-
     pub fn setRDO_UASTCQualityScalar(self: CompressorParams, quality: f32) void {
         b.compressor_params_set_rdo_uastc_quality_scalar(self.handle, quality);
+    }
+
+    pub fn setGenerateMipMaps(self: CompressorParams, enable: bool) void {
+        b.compressor_params_set_generate_mipmaps(self.handle, enable);
     }
 
     pub fn setMipSmallestDimension(self: CompressorParams, smallest_dimension: i32) void {
         b.compressor_params_set_mip_smallest_dimension(self.handle, smallest_dimension);
     }
 
+    /// Resizes sources list and creates a new Image in case index is out of bounds
     pub fn getImageSource(self: CompressorParams, index: u32) Image {
         return .{ .handle = b.compressor_params_get_or_create_source_image(self.handle, index) };
     }
