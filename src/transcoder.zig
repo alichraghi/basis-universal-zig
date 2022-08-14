@@ -3,10 +3,13 @@ const b = @import("transcoder/binding.zig");
 const BasisTextureFormat = @import("main.zig").BasisTextureFormat;
 const testing = std.testing;
 
+/// Must be called before a `.basis` file can be transcoded.
+/// NOTE: this function *isn't* thread safe.
 pub fn init_transcoder() void {
     b.basisu_transcoder_init();
 }
 
+/// Returns true if the specified format was enabled at compile time.
 pub fn isFormatEnabled(self: BasisTextureFormat, transcoder_format: Transcoder.TextureFormat) bool {
     return b.transcoder_is_format_supported(@enumToInt(self), @enumToInt(transcoder_format));
 }
@@ -14,22 +17,32 @@ pub fn isFormatEnabled(self: BasisTextureFormat, transcoder_format: Transcoder.T
 pub const Transcoder = struct {
     handle: *b.BasisFile,
 
-    pub fn init(src: []const u8) Transcoder {
-        return .{ .handle = b.transcoder_init(src.ptr, @intCast(u32, src.len)) };
+    pub fn init(src: []const u8) error{Unknown}!Transcoder {
+        const h = b.transcoder_init(src.ptr, @intCast(u32, src.len));
+        return if (!b.transcoder_start_transcoding(h))
+            error.Unknown
+        else .{ .handle = h };
     }
 
     pub fn deinit(self: Transcoder) void {
+        if (!b.transcoder_stop_transcoding(self.handle))
+            unreachable;
         b.transcoder_deinit(self.handle);
     }
 
+    /// Returns the total number of images in the basis file (always 1 or more).
+    /// Note that the number of mipmap levels for each image may differ, and that images may have different resolutions.
     pub fn getImageCount(self: Transcoder) u32 {
         return b.transcoder_get_images_count(self.handle);
     }
 
+    /// Returns the number of mipmap levels in an image.
     pub fn getImageLevelCount(self: Transcoder, image_index: u32) u32 {
         return b.transcoder_get_levels_count(self.handle, image_index);
     }
 
+    /// Returns basic information about an image.
+    /// Note that orig_width/orig_height may not be a multiple of 4.
     pub fn getImageLevelDescriptor(self: Transcoder, image_index: u32, level_index: u32) error{OutOfBoundsLevelIndex}!ImageLevelDescriptor {
         var desc: ImageLevelDescriptor = undefined;
         return if (b.transcoder_get_image_level_desc(
@@ -45,6 +58,7 @@ pub const Transcoder = struct {
             error.OutOfBoundsLevelIndex;
     }
 
+    /// Returns the bytes neeeded to store output.
     pub fn calcTranscodedSize(self: Transcoder, image_index: u32, level_index: u32, format: TextureFormat) error{OutOfBoundsLevelIndex}!u32 {
         var size: u32 = undefined;
         return if (b.transcoder_get_image_transcoded_size(self.handle, image_index, level_index, @enumToInt(format), &size))
@@ -53,24 +67,28 @@ pub const Transcoder = struct {
             error.OutOfBoundsLevelIndex;
     }
 
-    pub fn startTranscoding(self: Transcoder) error{Unknown}!void {
-        if (!b.transcoder_start_transcoding(self.handle))
-            return error.Unknown;
-    }
-
-    pub fn stopTranscoding(self: Transcoder) error{Unknown}!void {
-        if (!b.transcoder_stop_transcoding(self.handle))
-            return error.Unknown;
-    }
-
     pub const TranscodeParams = struct {
         decode_flags: ?DecodeFlags = null,
-        /// in blocks or pixels
+        /// Output row pitch in blocks or pixels.
+        /// Should be at least the image level's total_blocks (num_blocks_x * num_blocks_y),
+        /// or the total number of output pixels if fmt==cTFRGBA32.
         output_row_pitch: ?u32 = null,
-        /// in pixels
+        /// Output rows in pixels
+        /// Ignored unless fmt is uncompressed (cRGBA32, etc.).
+        /// The total number of output rows in the output buffer. If 0,
+        /// the transcoder assumes the slice's orig_height (NOT num_blocks_y * 4).
         output_rows: ?u32 = null,
     };
 
+    /// Decodes a single mipmap level from the .basis file to any of the supported output texture formats.
+    /// Currently, to decode to PVRTC1 the basis texture's dimensions in pixels must be a power of 2,
+    /// due to PVRTC1 format requirements.
+    /// NOTE:
+    /// - `transcoder_init()` must have been called first to initialize
+    ///   the transcoder lookup tables before calling this function.
+    /// - This method assumes the output texture buffer is readable.
+    ///   In some cases to handle alpha, the transcoder will write temporary data
+    ///   to the output texture in a first pass, which will be read in a second pass.
     pub fn transcode(
         self: Transcoder,
         out_buf: []u8,

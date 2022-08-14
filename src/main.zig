@@ -1,9 +1,6 @@
 pub usingnamespace @import("encoder.zig");
 pub usingnamespace @import("transcoder.zig");
 
-const t = @import("transcoder.zig");
-const e = @import("encoder.zig");
-
 pub const BasisTextureFormat = enum(u1) {
     etc1s = 0,
     uastc4x4 = 1,
@@ -11,10 +8,13 @@ pub const BasisTextureFormat = enum(u1) {
 
 // Test
 
-const std = @import("std");
+const t = @import("transcoder.zig");
+const e = @import("encoder.zig");
+const testing = @import("std").testing;
 
 test "reference decls" {
-    std.testing.refAllDeclsRecursive(@This());
+    testing.refAllDeclsRecursive(t);
+    testing.refAllDeclsRecursive(e);
 }
 
 test "encode/transcode" {
@@ -36,15 +36,10 @@ test "encode/transcode" {
     // Transcode
     t.init_transcoder();
 
-    const trans = t.Transcoder.init(comp.output());
+    const trans = try t.Transcoder.init(comp.output());
     defer trans.deinit();
 
-    var out_buf = try std.testing.allocator.alloc(u8, try trans.calcTranscodedSize(0, 0, .astc_4x4_rgba));
-    defer std.testing.allocator.free(out_buf);
-
-    try trans.startTranscoding();
-
+    var out_buf = try testing.allocator.alloc(u8, try trans.calcTranscodedSize(0, 0, .astc_4x4_rgba));
+    defer testing.allocator.free(out_buf);
     try trans.transcode(out_buf, 0, 0, .astc_4x4_rgba, .{});
-
-    try trans.stopTranscoding();
 }
