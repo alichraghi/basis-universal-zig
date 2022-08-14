@@ -1,8 +1,8 @@
-# basis-universal-zig
+# Basis Universal Zig
 
 Zig Binding of Basis Universal
 _compatible with [v16.3](https://github.com/BinomialLLC/basis_universal/tree/1.16.3)_
 
-### Status
+### Usage
 
-Transcoder is finished and Encoder has planned
+see `test "encode/transcode"` in `src/main.zig` for usage example
