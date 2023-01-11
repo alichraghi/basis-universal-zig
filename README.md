@@ -1,4 +1,6 @@
-# Basis Universal Zig
+# NOTE: moved to https://github.com/hexops/mach
+
+## Basis Universal Zig
 
 Zig Binding of Basis Universal
 _compatible with [v16.3](https://github.com/BinomialLLC/basis_universal/tree/1.16.3)_
